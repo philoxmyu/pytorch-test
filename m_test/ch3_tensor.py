@@ -153,7 +153,7 @@ if __name__ == "__main__":
     print("a+b:", a+b)  #自动广播
 
     ## 手动广播
-    a1 = a.unsqueeze(0) # change to 1*3*2
+    a1 = a.unsqueeze(0)  # change to 1*3*2
     print("a unsqueeze:", a1)
     print("a expand:", a1.expand(2,3,2))
 

@@ -5,6 +5,22 @@
 # @Contact : philoxmyu@gmail.com
 
 
+'''
+summary
+1. autograd 根据用户对variable的操作构建计算图
+2. 用户创建的节点为叶子节点, 叶子节点的grad_fn为None; 叶子节点中需要求导的variable具有AccumulateGrad标识,因其梯度是累加的;
+3. Variable 默认是不需要求导的, 即requires_grad 属性默认为False. 如果某一个节点的requires_grad被设置为True, 那么所有依赖它的节点requires_grad
+都为True; 求导法则
+4. Variable 的volatile属性默认为False, 如果某一个variable属性设置为True, 那么所有依赖它的节点volatile属性都为True.Volatile
+属性为True的节点不会求导,volatile的优先级比requires_grad 高
+5. 多次反向传播时, 梯度是累加的. 反向传播的中间缓存会被清空, 为进行多次反向传播需指定retain_graph=True 来保纯这些缓存
+6. 非叶子节点的梯度计算完自后即被清空,可以使用autograd.grad 或 hook 技术获取非叶子节点的梯度值
+7. variable的grad 与 data 形状一致, 应避免直接修改variable.data, 因为对data的直接操作无法进行反向传播
+8. 反向传播函数backward的参数grad_variables 可以看成链式求导的中间结果,如果是标量,可以省略,默认为1
+9. pytorch 采用动态图设计,可以很方便的查看中间层的输出,动态的设计计算图的结构
+
+'''
+
 from __future__ import print_function
 import torch as t
 from torch.autograd import Variable as V
@@ -96,3 +112,57 @@ if __name__ == "__main__":
     # PyTorch使用的是动态图，它的计算图在每次前向传播时都是从头开始构建，所以它能够使用Python控制语句
     # （如for、if等）根据需求创建计算图。这点在自然语言处理领域中很有用，它意味着你不需要事先构建所有可能用到的图的路径，
     # 图在运行时才构建。
+
+    def abs(x):
+        if x.data[0] > 0:
+            return x
+        else:
+            return -x
+    x = V(t.ones(1), requires_grad=True)
+    y = abs(x)
+    y.backward()
+    print("x.grad:", x.grad)
+
+
+
+    # 在反向传播中, 非叶子节点的导数计算完之后立即被清空.若想查看这些变量的梯度, 有以下两种方法
+    # 使用autograd.grad function; 使用hook(推荐使用, 但是实际使用中应尽量避免修改grad的值)
+    x = V(t.ones(3), requires_grad=True)
+    w = V(t.rand(3), requires_grad=True)
+    y = x * w
+    z = y.sum()
+    print(x.requires_grad, w.requires_grad, y.requires_grad)
+    # 非叶子节点的梯度在计算完之后自动被清空
+    z.backward()
+    print(x.grad, w.grad, y.grad)
+
+    # first method
+    x = V(t.ones(3), requires_grad=True)
+    w = V(t.rand(3), requires_grad=True)
+    y = x * w
+    z = y.sum()
+    # z对y的梯度, 隐调用backward()
+    print("z 对 y的梯度", t.autograd.grad(z, y))
+
+    # second method: 使用hook
+    # hook 是一个函数, 输入是梯度, 不应该有返回值
+    def varibale_hook(grad):
+        print("y的梯度:", grad)
+
+    x = V(t.ones(3), requires_grad=True)
+    w = V(t.rand(3), requires_grad=True)
+    y = x * w
+    # register hook
+    hook_handle = y.register_hook(varibale_hook)
+    z = y.sum()
+    z.backward()
+    # 除非每次都要用hook, 否则用完之后记得移除hook
+    hook_handle.remove()
+    # variable x 的梯度 size 与 x 一致; z是目标函数, 一般是标量, z对y的grad 形状与y一致; z.backward() = y.backward(grad_y)
+
+
+
+
+
+
+
